@@ -13,30 +13,7 @@ hint: [Terraform for さくらのクラウド](https://sacloud.github.io/terrafo
     * 埋めたら `direnv allow` で適用される。このカレントディレクトリでその環境変数が適用される。
     * `var.yml`に ansibleで作成したいuserを書く。 `var.sample.yml` に例があるのでパスワードとかをいい感じに変えよう
     * `wget https://raw.githubusercontent.com/jetstack/cert-manager/release-0.9/deploy/manifests/00-crds.yaml` を `cluster_provisioning`のディレクトリでしておく
-    * api.yamlとui.yamlの以下のような部分をよしなに直そう。使い方は、ここのmetadataのnameをingress.yamlのpathに指定しよう
-      * `<name>-<namespace>-bind-svc` の をenv.yamlの `__VAR__NAMESPACE` と一致させるようにしましょう。
-```
-# api.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: api-production-bind-svc　#<name>-<namespace>-bind-svcのフォーマットで書きましょう
-spec:
-  type: ExternalName
-  externalName: api.production.svc.cluster.local #<name>.<namespace>.svc~~~のフォーマットで書きましょう
 
-# ingress.yaml
-http:
-    paths:
-    - path: /
-        backend:
-        serviceName: ui-production-bind-svc
-        servicePort: 3000
-    - path: /api
-          backend:
-            serviceName: api-production-bind-svc
-            servicePort: 3000
-```
 * `terraform workspace show` で今のステージングを確認しよう。
 * `terraform workspace select dev` で devへ移動ができる
 その環境において初めて使う場合は以下を叩いて環境を作っておく
