@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-nbasic-env
+  namespace: monitoring
+data:
+  BASIC_AUTH_USERNAME: ictsc
+  BASIC_AUTH_PASSWORD: aWPBBh6i2
+  PROXY_PASS: http://prometheus:9090
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-nbasic
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: prometheus-nbasic
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: prometheus-nbasic
+    spec:
+      containers:
+      - name: prometheus-nbasic
+        image: quay.io/dtan4/nginx-basic-auth-proxy:latest
+        ports:
+          - containerPort: 80
+        envFrom:
+          - configMapRef:
+              name: prometheus-nbasic-env
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-nbasic
+  namespace: monitoring
+spec:
+  ports:
+    - port: 9090
+      protocol: TCP
+      targetPort: 80
+  selector:
+    app: prometheus-nbasic
+  type: LoadBalancer

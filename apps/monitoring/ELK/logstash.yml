@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logstash
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: logstash
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: logstash
+    spec:
+      containers:
+      - name: logstash
+        image: docker.elastic.co/logstash/logstash:7.6.0
+        env:
+          - name: discovery.type
+            value: single-node
+        ports:
+        - containerPort: 55514
+        volumeMounts:
+        - mountPath: /usr/share/logstash/pipeline
+          name: pipeline
+      volumes:
+      - name: pipeline
+        configMap:
+          name: logstash-config
+          items:
+          - key: pipeline.conf
+            path: pipeline.conf
+      securityContext:
+        fsGroup: 101
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: logstash
+  namespace: monitoring
+spec:
+  ports:
+    - port: 514
+      protocol: TCP
+      targetPort: 55514
+  selector:
+    app: logstash
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-config
+  namespace: monitoring
+data:
+  pipeline.conf: "
+  input {
+    syslog {
+      port => 55514\n
+      codec => cef\n
+      syslog_field => \"syslog\"\n
+    }
+  }
+  output {
+    elasticsearch {
+    hosts => [\"elasticsearch:9200\"]\n
+    index => \"sys-%{+YYYY.MM.dd}\"\n
+    }
+  }"

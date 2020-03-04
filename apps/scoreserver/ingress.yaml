@@ -1,0 +1,48 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress
+  namespace: __VAR__NAMESPACE
+  annotations:
+    kubernetes.io/tls-acme: 'true'
+    ingress.kubernetes.io/ssl-redirect: "false"
+    kubernetes.io/ingress.class: __VAR__NGINX_CTL_CLASS
+    certmanager.k8s.io/cluster-issuer: letsencrypt-prod
+spec:
+  tls: # 取得した証明書を使って通信させる
+  - secretName: cert-manager-tls
+    hosts:
+    - __VAR__CONTEST_FQDN # ドメイン
+    - __VAR__DEV_CONTEST_FQDN
+
+  rules:
+  - host: __VAR__CONTEST_FQDN
+    http:
+      paths:
+        - path: /
+          backend:
+            serviceName: ui
+            servicePort: 3000
+        - path: /api
+          backend:
+            serviceName: api
+            servicePort: 3000
+        - path: /push
+          backend:
+            serviceName: push
+            servicePort: 3000
+  - host: __VAR__DEV_CONTEST_FQDN
+    http:
+      paths:
+        - path: /
+          backend:
+            serviceName: ui
+            servicePort: 3000
+        - path: /api
+          backend:
+            serviceName: api
+            servicePort: 3000
+        - path: /push
+          backend:
+            serviceName: push
+            servicePort: 3000
