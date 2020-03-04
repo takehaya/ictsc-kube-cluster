@@ -1,0 +1,242 @@
+# common setup phase
+- hosts: cloud_servers
+  become: yes
+  vars_files:
+    - var.yml
+  tasks:
+    - name: add a ictsc group
+      group: name=ictsc state=present
+    - name: add a new user
+      user:
+        name: "{{ item.name }}"
+        uid: "{{ item.uid}}"
+        password: "{{ item.password | password_hash('sha512') }}"
+        group: "{{ item.name }}"
+        shell: /bin/bash
+        groups: sudo
+        state: present
+      with_items:
+        - "{{ users }}"
+    - name: mkdir .ssh
+      file:
+        path: /home/{{ item.name }}/.ssh/
+        state: directory
+        owner: "{{ item.name }}"
+        group: sudo
+        mode: 0700
+      with_items:
+        - "{{ users }}"
+    - name: add authorized_key
+      authorized_key:
+        user: "{{ item.name }}"
+        key: "{{ lookup('file', '~/.ssh/ictsc.pub') }}"
+      with_items:
+        - "{{ users }}"
+    - name: add to sudoers
+      lineinfile:
+        dest: /etc/sudoers
+        line: "{{ item.name }} ALL=(ALL) NOPASSWD:ALL"
+      with_items:
+        - "{{ users }}"
+
+# docker setup phase
+- hosts: cloud_servers
+  become: yes
+  vars_files:
+    - var.yml
+  tasks:
+    - name: Update and Upgrade
+      apt:
+        update_cache: "yes"
+        upgrade: "dist"
+    - name: remove "docker docker-engine docker.io" packages
+      apt:
+        name: "{{ packages }}"
+        state: absent
+      vars:
+        packages:
+          - docker
+          - docker-engine
+          - docker.io
+          - containerd
+          - runc
+          - etcd
+    # - name: install python3-dbus
+    #   apt:
+    #     name:
+    #       - network-manager
+    #       - python3-dbus
+    #       - python-dbus
+    #       - libnm-glib-dev
+    #     state: present
+    # - name: reboot
+    #   shell: "sleep 1 && reboot"
+    #   async: 1
+    #   poll: 0
+    # - name: wait
+    #   wait_for_connection:
+    #     connect_timeout: 20
+    #     sleep: 5
+    #     delay: 5
+    #     timeout: 120
+    # - name: eth1 set up
+    #   nmcli:
+    #     type: ethernet
+    #     conn_name: eth1
+    #     ifname: eth1
+    #     ip4: "{{ inventory_hostname }}/24"
+    #     state: present
+    - name: update apt repository
+      apt:
+        update_cache: yes
+    - name: install "apt-transport-https ca-certificates curl software-properties-common" packages
+      apt:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg-agent
+          - software-properties-common
+          - make
+          - neovim
+          - glusterfs-server
+          - glusterfs-common
+          - glusterfs-client
+          - fuse
+    - name: Set glusterfs-server to start on boot
+      service: name=glusterd enabled=yes
+    - name: add docker's official GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+    - name: add docker repository
+      apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu bionic stable
+        state: present
+    - name: update apt repository
+      apt:
+        update_cache: yes
+    - name: install docker-ce
+      apt:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+    - name: add group
+      user:
+        name: "{{ item.name }}"
+        groups: adm, sudo, docker
+        append: yes
+      with_items:
+        - "{{ users }}"
+
+# kubernetes setup phase
+- hosts: cloud_servers
+  become: yes
+  tasks:
+    - name: Update and Upgrade
+      apt:
+        update_cache: "yes"
+        upgrade: "dist"
+    - name: add gpg key
+      apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+    - name: add k8s apt repository
+      apt_repository:
+        repo: deb http://apt.kubernetes.io/ kubernetes-xenial main
+    - name: install "kubeadm kubelet kubectl" packages
+      apt:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+          - kubeadm
+          - kubelet
+          - kubectl
+    - name: Remove swapfile from /etc/fstab
+      mount:
+        name: swap
+        fstype: swap
+        state: absent
+    - name: Disable swap
+      command: swapoff -a
+      when: ansible_swaptotal_mb > 0
+    - name: Set docker service to start on boot
+      service: name=docker enabled=yes
+    - name: Set kubelet service to start on boot
+      service: name=kubelet enabled=yes
+    - name: update seting file
+      copy:
+        src: ./10-kubeadm.template.conf
+        dest: /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+        owner: root
+        group: root
+    - name: kubelet.service restart
+      service:
+        name: kubelet.service
+        daemon_reload: yes
+        state: restarted
+        enabled: yes
+
+# kubernetes api lb setup phase
+- hosts: lb_server
+  become: yes
+  vars:
+    sysctl_config:
+      net.ipv4.ip_forward: 1
+      net.ipv4.conf.all.forwarding: 1
+      net.ipv6.conf.all.forwarding: 1
+      net.ipv4.ip_nonlocal_bind: 1
+  tasks:
+    - name: Update and Upgrade
+      apt:
+        update_cache: "yes"
+        upgrade: "dist"
+    - name: install haproxy, keepalived
+      apt:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+          - haproxy
+          - keepalived
+    - name: kernel params
+      sysctl:
+        name: '{{ item.key }}'
+        value: '{{ item.value }}'
+        sysctl_set: yes
+        state: present
+        reload: yes
+        ignoreerrors: yes
+      with_dict: '{{ sysctl_config }}'
+
+# pstate redis setup phase
+- hosts: appliance_server
+  become: yes
+  tasks:
+    - name: Update and Upgrade
+      apt:
+        update_cache: "yes"
+        upgrade: "dist"
+    - name: install redis-server
+      apt:
+        name: "redis-server"
+        state: present
+    - name: update seting file
+      copy:
+        src: ./redis.conf
+        dest: /etc/redis/redis.conf
+        owner: root
+        group: root
+    - name: redis-server.service enable
+      service:
+        name: kubelet.service
+        daemon_reload: yes
+        state: restarted
+        enabled: yes

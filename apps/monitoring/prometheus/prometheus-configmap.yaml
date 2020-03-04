@@ -1,0 +1,295 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  creationTimestamp: null
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yaml: |
+    global:
+      scrape_interval: 10s
+      scrape_timeout: 10s
+      evaluation_interval: 10s
+    alerting:
+      alertmanagers:
+        - static_configs:
+          - targets:
+            - "alertmanager:9093"
+    rule_files:
+      - "/etc/prometheus-rules/*.rules.yaml"
+    scrape_configs:
+      # https://github.com/prometheus/prometheus/blob/master/documentation/examples/prometheus-kubernetes.yml#L37
+      - job_name: 'kubernetes-nodes'
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - source_labels: [__address__]
+            regex: '(.*):10250'
+            replacement: '${1}:10255'
+            target_label: __address__
+      # https://github.com/prometheus/prometheus/blob/master/documentation/examples/prometheus-kubernetes.yml#L79
+      - job_name: 'kubernetes-endpoints'
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
+            action: replace
+            target_label: __scheme__
+            regex: (https?)
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+            action: replace
+            target_label: __address__
+            regex: (.+)(?::\d+);(\d+)
+            replacement: $1:$2
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            action: replace
+            target_label: kubernetes_name
+      # https://github.com/prometheus/prometheus/blob/master/documentation/examples/prometheus-kubernetes.yml#L119
+      - job_name: 'kubernetes-services'
+        metrics_path: /probe
+        params:
+          module: [http_2xx]
+        kubernetes_sd_configs:
+          - role: service
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+            action: keep
+            regex: true
+          - source_labels: [__address__]
+            target_label: __param_target
+          - target_label: __address__
+            replacement: blackbox
+          - source_labels: [__param_target]
+            target_label: instance
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            target_label: kubernetes_name
+      # https://github.com/prometheus/prometheus/blob/master/documentation/examples/prometheus-kubernetes.yml#L156
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: (.+):(?:\d+);(\d+)
+            replacement: ${1}:${2}
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+          - source_labels: [__meta_kubernetes_pod_container_port_number]
+            action: keep
+            regex: 9\d{3}
+      - job_name: 'kubernetes-cadvisor'
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - action: labelmap
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+      - job_name: 'blackbox-exporter'
+        metrics_path: /probe
+        params:
+          module: [icmp]
+        file_sd_configs:
+          - files:
+            - /etc/blackbox-exporter/icmp-target.yml
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: 'blackbox-exporter.monitoring.svc.cluster.local:9115'
+          - target_label: __address__
+            replacement: '172.16.1.200:9115'
+
+      - job_name: 'node-exporter'
+        file_sd_configs:
+          - files:
+            - /etc/node-exporter/node-exporter-target.yml
+      
+
+      - job_name: 'snmp-exporter-juniper'
+        scrape_interval: 1m 
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        file_sd_configs:
+          - files:
+            - /etc/snmp-exporter/snmp-exporter-target-juniper.yml
+        params:
+          module: [juniper]
+        metrics_path: /snmp
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - source_labels: [type]
+            target_label: __param_module
+          - source_labels: [type]
+            target_label: type
+          - target_label: __address__
+            replacement: 'snmp-exporter.monitoring.svc.cluster.local:9116'
+      
+      - job_name: 'snmp-exporter-cisco'
+        scrape_interval: 1m 
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        file_sd_configs:
+          - files:
+            - /etc/snmp-exporter/snmp-exporter-target-cisco.yml
+        params:
+          module: [cisco]
+        metrics_path: /snmp
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - source_labels: [type]
+            target_label: __param_module
+          - source_labels: [type]
+            target_label: type
+          - target_label: __address__
+            replacement: 'snmp-exporter.monitoring.svc.cluster.local:9116'
+      
+      
+---
+apiVersion: v1
+data:
+  cpu-usage.rules.yaml: |
+    groups:
+    - name: cpu-usage.rules
+      rules:
+      - alert: NodeCPUUsage
+        expr: (100 - (avg by (instance) (irate(node_cpu{name="node-exporter",mode="idle"}[5m])) * 100)) > 75
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "{{$labels.instance}}: High CPU usage detected"
+          firing_text: "{{$labels.instance}}: CPU usage is above 80% (current value is: {{ $value }}"
+          resolved_text: "resolved status ok"
+
+  instance-availability.rules.yaml: |
+    groups:
+    - name: instance-availability.rules
+      rules:
+      - alert: InstanceDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Instance {{ $labels.instance }} down"
+          firing_text: "{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 5 minute."
+          resolved_text: "resolved status ok"
+
+  low-disk-space.rules.yaml: |
+    groups:
+    - name: low-disk-space.rules
+      rules:
+      - alert: NodeLowRootDisk
+        expr: ((node_filesystem_size{mountpoint="/root-disk"} - node_filesystem_free{mountpoint="/root-disk"} ) / node_filesystem_size{mountpoint="/root-disk"} * 100) > 75
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: "{{$labels.instance}}: Low root disk space"
+          firing_text: "{{$labels.instance}}: Root disk usage is above 75% (current value is: {{ $value }})"
+          resolved_text: "resolved status ok"
+      - alert: NodeLowDataDisk
+        expr: ((node_filesystem_size{mountpoint="/data-disk"} - node_filesystem_free{mountpoint="/data-disk"} ) / node_filesystem_size{mountpoint="/data-disk"} * 100) > 75
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: "{{$labels.instance}}: Low data disk space"
+          firing_text: "{{$labels.instance}}: Data disk usage is above 75% (current value is: {{ $value }})"
+          resolved_text: "resolved status ok"
+
+  mem-usage.rules.yaml: |
+    groups:
+    - name: mem-usage.rules
+      rules:
+      - alert: NodeSwapUsage
+        expr: (((node_memory_SwapTotal-node_memory_SwapFree)/node_memory_SwapTotal)*100) > 75
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: "{{$labels.instance}}: Swap usage detected"
+          firing_text: "{{$labels.instance}}: Swap usage usage is above 75% (current value is: {{ $value }})"
+          resolved_text: "resolved status ok"
+      - alert: NodeMemoryUsage
+        expr: (((node_memory_MemTotal-node_memory_MemFree-node_memory_Cached)/(node_memory_MemTotal)*100)) > 75
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: "{{$labels.instance}}: High memory usage detected"
+          firing_text: "{{$labels.instance}}: Memory usage is above 75% (current value is: {{ $value }})"
+          resolved_text: "resolved status ok"
+        
+  blackbox.rules.yaml: |
+    groups:
+    - name: blackbox.rules
+      rules:
+      - alert: EndpointDown
+        expr: probe_success == 0
+        for: 10s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Endpoint {{ $labels.instance }} down"
+          firing_text: "Endpoint {{ $labels.instance }} down"
+          resolved_text: "resolved status ok"
+
+kind: ConfigMap
+metadata:
+  creationTimestamp: null
+  name: prometheus-rules
+  namespace: monitoring

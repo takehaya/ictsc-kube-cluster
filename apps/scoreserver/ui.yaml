@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: ui
+  name: ui
+  namespace: __VAR__NAMESPACE
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: ui
+  template:
+    metadata:
+      labels:
+        app: ui
+      namespace: __VAR__NAMESPACE
+    spec:
+      containers:
+        - image: __VAR__UI_IMAGE
+          imagePullPolicy: Always
+          name: ui
+          ports:
+            - name: ui
+              containerPort: 3000
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: __VAR__NAMESPACE
+  name: ui
+spec:
+  selector:
+    app: ui
+  type: ClusterIP
+  ports:
+    - port: 3000

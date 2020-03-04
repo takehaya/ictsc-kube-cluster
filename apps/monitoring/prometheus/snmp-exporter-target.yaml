@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: snmp-exporter-target
+  namespace: monitoring
+data:
+  snmp-exporter-target-juniper.yml: |
+    - labels:
+        type: juniper
+    - targets:
+      - '172.16.1.55'
+      labels:
+        hostname: ictsc-mx5
+    - targets:
+      - '172.16.1.56'
+      labels:
+        hostname: ictsc-srx1500
+        
+  snmp-exporter-target-cisco.yml: |
+    - labels: 
+        type: cisco
+    - targets:
+      - '172.16.1.51'
+      labels:
+        hostname: ictsc-2960-01
+    - targets:
+      - '172.16.1.52'
+      labels:
+        hostname: ictsc-2960-02
+    - targets:
+      - '172.16.1.53'
+      labels:
+        hostname: ictsc-2960-03
+    - targets:
+      - '172.16.1.54'
+      labels:
+        hostname: ictsc-2960-04

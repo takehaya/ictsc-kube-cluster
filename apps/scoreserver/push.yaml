@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: push
+  labels:
+    app: push
+  namespace: __VAR__NAMESPACE
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: push
+  template:
+    metadata:
+      labels:
+        app: push
+      namespace: scoreserver
+    spec:
+      containers:
+      - image: openfresh/plasma:0.2.2
+        imagePullPolicy: Always
+        name: push
+        ports:
+        - name: push
+          containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: push-env
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: push-env
+  namespace: __VAR__NAMESPACE
+data:
+  PLASMA_SUBSCRIBER_REDIS_CHANNELS: __VAR__PLASMA_SUBSCRIBER_REDIS_CHANNELS
+  PLASMA_SSE_RETRY: __VAR__PLASMA_SSE_RETRY
+  PLASMA_DEBUG: __VAR__PLASMA_DEBUG
+  PLASMA_ORIGIN: __VAR__PLASMA_ORIGIN
+  PLASMA_SUBSCRIBER_TYPE: __VAR__PLASMA_SUBSCRIBER_TYPE
+  PLASMA_SUBSCRIBER_REDIS_ADDR: __VAR__PLASMA_SUBSCRIBER_REDIS_ADDR
+  PLASMA_SUBSCRIBER_REDIS_DB: __VAR__PLASMA_SUBSCRIBER_REDIS_DB
+  PLASMA_SUBSCRIBER_REDIS_OVER_MAX_RETRY_BEHAVIOR: __VAR__PLASMA_SUBSCRIBER_REDIS_OVER_MAX_RETRY_BEHAVIOR
+  PLASMA_SUBSCRIBER_REDIS_MAX_RETRY: __VAR__PLASMA_SUBSCRIBER_REDIS_MAX_RETRY
+  PLASMA_SUBSCRIBER_REDIS_TIMEOUT: __VAR__PLASMA_SUBSCRIBER_REDIS_TIMEOUT
+  PLASMA_SUBSCRIBER_REDIS_RETRY_INTERBAL: __VAR__PLASMA_SUBSCRIBER_REDIS_RETRY_INTERBAL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: __VAR__NAMESPACE
+  name: push
+spec:
+  selector:
+    app: push
+  type: ClusterIP
+  ports:
+    - port: 3000
+      targetPort: 8080

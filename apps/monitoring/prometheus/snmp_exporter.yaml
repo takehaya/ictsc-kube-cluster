@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: snmp-exporter
+  namespace: monitoring
+spec:
+  type: LoadBalancer
+  selector:
+    app: snmp-exporter-app
+  ports:
+    - name: snmp-exporter-port
+      port: 9116
+      targetPort: 9116
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: snmp-exporter
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: snmp-exporter-app
+  template:
+    metadata:
+      labels:
+        app: snmp-exporter-app
+    spec:
+      containers:
+      - name: snmp-exporter
+        image: prom/snmp-exporter:v0.17.0
+        ports:
+        - containerPort: 9116
+        volumeMounts:
+          - name: config-volume
+            mountPath: /etc/snmp_exporter
+      volumes:
+      - name: config-volume
+        configMap: 
+          name: snmp.yml
